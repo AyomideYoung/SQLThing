@@ -1,4 +1,6 @@
 ﻿using MySql.Data.MySqlClient;
+using SQLThing.exceptions;
+using SQLThing.helpers;
 using SQLThing.indexing.api;
 using SQLThing.indexing.models;
 using System;
@@ -10,14 +12,17 @@ using System.Threading.Tasks;
 
 namespace SQLThing.indexing.impl
 {
+
     internal class MySqlBasedInvertedTokenStorage : IInvertedIndexStorage
     {
         //externalize this connection string
-        private const string ConnectionString = "Server=localhost;Database=search-engine-demo;User=search_user;Password=melosity;";
+        private string ConnectionString = StorageHelper.ConnectionString;
+
+
 
         public long GetPostingListSize(Token token)
         {
-
+            
             using (MySqlConnection connection = new MySqlConnection(ConnectionString))
             {
                 try
@@ -94,13 +99,26 @@ namespace SQLThing.indexing.impl
         }
 
 
-        public List<DocumentIndex> MatchTokens(Token[] tokens) {
-            int shortestPostlistTokenId = GetShortestPostingListTokenId(tokens);
+        public List<DocumentIndex> MatchTokens(Token[] tokens)
+        {
+            int shortestPostlistTokenId;
+
+            if(tokens == null || tokens.Length == 0)
+            {
+                return new List<DocumentIndex>(); //return empty list if no tokens provided
+            }
+
+            try { shortestPostlistTokenId = GetShortestPostingListTokenId(tokens); }
+            catch (NoTokenFoundException e)
+            {
+                return new List<DocumentIndex>(); //return empty list if no token found
+            }
+
 
             //reorder tokens array so that the shortestPostlistTokenId is first
             tokens = tokens.OrderBy(t => t.Id == shortestPostlistTokenId.ToString() ? 0 : 1).ToArray();
             string query = BuildMatchingAlgorithmQuery(tokens);
-        
+
             using (MySqlConnection connection = new MySqlConnection(ConnectionString))
             {
                 try
@@ -126,7 +144,7 @@ namespace SQLThing.indexing.impl
                                     totalTermCount = Convert.ToInt64(reader["total_term_count"]),
                                     DocumentLink = reader["doc_link"].ToString(),
                                     DocumentType = reader["doc_type"].ToString()
-                                    
+
                                 };
 
                                 for (int i = 0; i < tokens.Length; i++)
@@ -172,7 +190,7 @@ namespace SQLThing.indexing.impl
                         }
                         else
                         {
-                            throw new Exception("No matching token found or invalid result.");
+                            throw new NoTokenFoundException("No matching token found or invalid result.");
                         }
                     }
                 }
@@ -228,7 +246,7 @@ namespace SQLThing.indexing.impl
 
         public long GetTotalCorpusSize()
         {
-            string query = "SHOW TABLE STATUS LIKE 'your_table_name';";
+            string query = "SHOW TABLE STATUS LIKE 'documents';";
             long rowCount = 0;
             using (MySqlConnection connection = new MySqlConnection(ConnectionString))
             {
@@ -257,7 +275,7 @@ namespace SQLThing.indexing.impl
             }
             return rowCount;
         }
-    
+
 
         public void StoreIndex(DocumentIndex index)
         {
@@ -285,15 +303,15 @@ namespace SQLThing.indexing.impl
                 $"" +
                 $"\n" +
                 $"DROP TEMPORARY TABLE {tempTableName}";
-                
 
-        
+
+
             using (MySqlConnection connection = new MySqlConnection(ConnectionString))
             {
                 try
                 {
                     connection.Open();
-                   
+
                     //sum up all token counts in index
                     index.totalTermCount = index.FrequencyDict.Values.Sum();
 
@@ -364,6 +382,96 @@ namespace SQLThing.indexing.impl
                 }
             }
             return tempTableName;
+        }
+
+        public string[] SearchWords(string incompleteQuery)
+        {
+            var suggestions = new List<string>();
+
+            // The query finds words that start with the incomplete query
+            string sql = "SELECT value FROM inverted_index_table WHERE value LIKE @query LIMIT 3";
+
+            
+
+            using (var connection = new MySqlConnection(ConnectionString))
+            {
+                try
+                {
+                    connection.Open();
+                    using (var command = new MySqlCommand(sql, connection))
+                    {
+                        // Add the parameterized value for the LIKE clause
+                        command.Parameters.AddWithValue("@query", incompleteQuery + "%");
+
+                        using (var reader = command.ExecuteReader())
+                        {
+                            while (reader.Read())
+                            {
+                                suggestions.Add(reader.GetString("value"));
+                            }
+                        }
+                    }
+                }
+                catch (MySqlException ex)
+                {
+                    // Handle exceptions
+                    Console.WriteLine($"Error during autocomplete search: {ex.Message}");
+                    throw;
+                }
+            }
+
+            return suggestions.ToArray();
+        }
+
+        public Token[] ResolveTokens(string[] words)
+        {
+            var tokens = new List<Token>();
+
+            if (words == null || words.Length == 0)
+            {
+                return tokens.ToArray();
+            }
+
+            // 1. Generate SQL query with dynamic parameters.
+            var placeholders = string.Join(",", Enumerable.Range(0, words.Length).Select(i => $"@token{i}"));
+            string sql = $"SELECT id, value FROM inverted_index_table t WHERE t.value IN ({placeholders})";
+
+            using (var connection = new MySqlConnection(ConnectionString))
+            {
+                try
+                {
+                    connection.Open();
+                    using (var command = new MySqlCommand(sql, connection))
+                    {
+                        // 2. Add each token string as a parameter.
+                        for (int i = 0; i < words.Length; i++)
+                        {
+                            command.Parameters.AddWithValue($"@token{i}", words[i]);
+                        }
+
+                        // 3. Execute the query and read results.
+                        using (var reader = command.ExecuteReader())
+                        {
+                            while (reader.Read())
+                            {
+                                tokens.Add(new Token
+                                {
+                                    Id = reader.GetInt32("id").ToString(),
+                                    Value = reader.GetString("value")
+                                });
+                            }
+                        }
+                    }
+                }
+                catch (MySqlException ex)
+                {
+                    // Handle exceptions.
+                    Console.WriteLine($"Error retrieving tokens: {ex.Message}");
+                    throw;
+                }
+            }
+
+            return tokens.ToArray();
         }
     }
 }

@@ -10,6 +10,8 @@ namespace SQLThing.indexing.api
     public interface IInvertedIndexStorage
     {
         void StoreIndex(DocumentIndex index);
+        Token[] ResolveTokens(string[] words);
+        string[] SearchWords(string incompleteInput);
         //Store by opening the index and searching
         List<DocumentIndex> MatchTokens(Token[] tokens);
         long GetPostingListSize(Token token);

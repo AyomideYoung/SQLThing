@@ -13,7 +13,7 @@ namespace mew
             var storage = new MySqlBasedInvertedTokenStorage();
             var dict = new Dictionary<string, long>()
             {
-                
+
                 { "token2", 10 },
                 { "token3", 15 },
                 { "token4", 12 },
@@ -23,22 +23,23 @@ namespace mew
             };
             var dindex = new DocumentIndex
             {
-               FrequencyDict = dict,
-               DocumentLink = "http://example.com/document/1"
-             
+                FrequencyDict = dict,
+                DocumentLink = "http://example.com/document/88"
+
             };
 
 
-           //storage.StoreIndex(dindex);
+            //storage.StoreIndex(dindex);
+            Token[] tokens = storage.ResolveTokens(new string[] { "token1", "token12", "token2" });
             Matcher matcher = new Matcher(storage);
-            matcher.MatchToken(new Token[] { new Token
+            /*matcher.MatchToken(new Token[] { new Token
             {
                 Id= "4",
                 Value="token4"
-            } });
+            } });*/
             //time query
             var startTime = DateTime.Now;
-            var documents = matcher.MatchToken(new Token[] { new Token
+            /*var documents = matcher.MatchToken(new Token[] { new Token
             {
                 Id= "4",
                 Value="token4"
@@ -57,7 +58,7 @@ namespace mew
             var headers = new List<string> { "ID", "Document Link", "Document Type", "Total Terms" };
             var columnWidths = new Dictionary<string, int>
         {
-            { "ID", 10 },
+            
             { "Document Link", 30 },
             { "Document Type", 20 },
             { "Total Terms", 15 }
@@ -104,7 +105,7 @@ namespace mew
 
             Console.WriteLine(separator);
         }
-        /* List<DocumentIndex> documentIndexes = storage.MatchTokens(new Token[] { new Token
+        *//* List<DocumentIndex> documentIndexes = storage.MatchTokens(new Token[] { new Token
          {
              Id= "1",
              Value="token1"
@@ -120,8 +121,9 @@ namespace mew
          }*/
 
 
+        }
     }
-    }
+}
 
     
     
